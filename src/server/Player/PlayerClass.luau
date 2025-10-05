@@ -3,27 +3,37 @@ local PlayerClass = {}
 PlayerClass.__index = PlayerClass
 
 -- Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Utility = require(ReplicatedStorage.Shared.Utility)
 
 -- Modules
 
 -- Constantes
+-- Stamina
 local STAMINA_DRAIN_PER_STUD = 0.2
 local STAMINA_REGEN_RATE = 2 -- points régénérés toutes les 0.5s
 local REGEN_INTERVAL = 0.5
 local MIN_STAMINA = 0
 local MAX_STAMINA = 100
 
+-- Player Params
+local PLAYER_WALK_SPEED = 16
+local PLAYER_RUN_SPEED = 24
+
 -- Types
 export type PlayerClassType = {
 	-- Public
 	player: Player,
+	character: Model,
+	humanoid: Humanoid,
+	HumanoidRootPart: BasePart?,
 	stamina: number,
 	state: number,
 
 	-- Private
-	_playerRunConn: RBXScriptConnection | nil,
-	_playerStaminaRegenThread: thread | nil,
+	_playerRunConn: RBXScriptConnection?,
+	_playerStaminaRegenThread: thread?,
 
 	-- Public Methods
 	new: (player: Player) -> PlayerClassType,
@@ -48,18 +58,39 @@ local PlayerStateEnum = table.freeze({
 PlayerClass.State = PlayerStateEnum
 
 -- Constructor
-function PlayerClass.new(player: Player): PlayerClassType
+function PlayerClass.new(player: Player): PlayerClassType?
 	local self = setmetatable({}, PlayerClass)
 	local typedSelf: PlayerClassType = self
 
 	typedSelf.player = player
+	typedSelf.character = player.Character :: Model
+	if not typedSelf.character then
+		Utility.Warn("No Character found in " .. player.Name, script.Name)
+		return
+	end
+	typedSelf.humanoid = typedSelf.character:FindFirstChildOfClass("Humanoid") :: Humanoid
+	if not typedSelf.humanoid then
+		Utility.Warn("No humanoid found in " .. player.Name, script.Name)
+		return
+	end
+	typedSelf.HumanoidRootPart = typedSelf.character:WaitForChild("HumanoidRootPart") :: BasePart
+	if not typedSelf.HumanoidRootPart then
+		Utility.Warn("No HumanoidRootPart found in " .. player.Name, script.Name)
+		return
+	end
+
 	typedSelf.stamina = 100
 	typedSelf.state = PlayerStateEnum.Idle
 
+	-- Private
 	typedSelf._playerRunConn = nil
 	typedSelf._playerStaminaRegenThread = nil
 
 	return typedSelf
+end
+
+function PlayerClass.Init(self: PlayerClassType)
+	self.humanoid.WalkSpeed = PLAYER_WALK_SPEED
 end
 
 -- Démarre la consommation de stamina
@@ -94,6 +125,7 @@ function PlayerClass.StartRun(self: PlayerClassType)
 			self._playerRunConn = nil
 			return
 		end
+		self.humanoid.WalkSpeed = PLAYER_RUN_SPEED
 
 		local currentPos = root.Position
 		local distance = (currentPos - lastPos).Magnitude
@@ -112,6 +144,7 @@ function PlayerClass.StopRun(self: PlayerClassType)
 		self._playerRunConn:Disconnect()
 		self._playerRunConn = nil
 	end
+	self.humanoid.WalkSpeed = PLAYER_WALK_SPEED
 
 	-- lance un thread qui régénère la stamina progressivement
 	self._playerStaminaRegenThread = task.spawn(function()
