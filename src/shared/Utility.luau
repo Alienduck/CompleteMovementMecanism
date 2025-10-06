@@ -41,7 +41,7 @@ end
 ]]
 function Utility.CreateFolder(name: string, parentInstance: Instance?): Folder
 	local parent: Instance = parentInstance or ReplicatedStorage
-	local folder: Folder = parent[name] :: Folder
+	local folder: Folder = parent:FindFirstChild(name) :: Folder
 	if folder and folder:IsA("Folder") then
 		return folder
 	end
