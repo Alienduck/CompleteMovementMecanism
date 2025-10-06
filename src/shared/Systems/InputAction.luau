@@ -1,4 +1,6 @@
 --!strict
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Utility = require(ReplicatedStorage.Shared.Utility)
 local actionTemplate: InputAction = Instance.new("InputAction")
 actionTemplate.Name = "ActionTemplate"
 actionTemplate.Parent = script
@@ -12,7 +14,11 @@ local KeyboardBinding: InputBinding = Instance.new("InputBinding")
 KeyboardBinding.Name = "KeyboardBinding"
 KeyboardBinding.Parent = actionTemplate
 
-export type Action = typeof(script.ActionTemplate)
+export type Action = InputAction & {
+	GamepadBinding: InputBinding,
+	KeyboardBinding: InputBinding,
+}
+
 export type KeybindImpl = {
 	CurrentContext: string,
 	EnableContext: (context: string) -> (),
@@ -28,14 +34,20 @@ export type KeybindContext = {
 local Keybind: KeybindImpl = { CurrentContext = "" } :: KeybindImpl
 
 -- constant variables
-local ACTION_TEMPLATE = script.ActionTemplate
+local ACTION_TEMPLATE: Action = script.ActionTemplate
 local ALWAYS_ON_STATE = "idle" -- this state will always be on
 
 -- Private variables
 local keybinds: { [string]: KeybindContext } = {}
 
 -- Private functions
-local function getContext(name: string): Action
+
+--[[
+	@params: name: string \
+	@return: KeybindContext \
+	@description: Find context by the given name, create and return it if not found, return it if found.
+]]
+local function getContext(name: string): KeybindContext
 	if not keybinds[name] then
 		local context = Instance.new("InputContext")
 		context.Enabled = name == ALWAYS_ON_STATE
@@ -58,18 +70,19 @@ end
 function Keybind.GetAction(ctx: string, name: string): Action
 	local context: KeybindContext = getContext(ctx)
 
-	local action = context.keybinds[name]
-	if action == nil then
-		action = getEmptyAction()
-		action.Name = name
-		action.Parent = context.context
+	local action: Action = context.keybinds[name]
+	if not action then
+		local newAction = getEmptyAction()
+		newAction.Name = name
+		newAction.Parent = context.context
 
-		for _, v in action:GetChildren() do
+		for _, v in newAction:GetChildren() do
 			local binding = v :: InputBinding
-			local bindingName = v.Name
+			local bindingName: string = v.Name
 
 			binding:GetPropertyChangedSignal("KeyCode"):Connect(function()
 				if binding.KeyCode == Enum.KeyCode.Unknown then
+					Utility.Warn("KeyCode unknown", script.Name)
 					return
 				end
 
@@ -80,26 +93,31 @@ function Keybind.GetAction(ctx: string, name: string): Action
 
 				if (bindingName == "GamepadBinding") ~= isGamepadBinding then
 					binding.KeyCode = Enum.KeyCode.Unknown
-					warn(
-						"Invalid keybind provided. Gamepad bindings must only use gamepad buttons, and vice versa for keyboard."
+					Utility.Warn(
+						"Invalid keybind provided. Gamepad bindings must only use gamepad buttons, and vice versa for keyboard.",
+						script.Name
 					)
 					return
 				end
 
 				-- loop to check for duplicates
-				for otherName, v in context.keybinds do
-					if v == action then
+				for otherName: string, v: Action in context.keybinds do
+					if (v :: any) == (newAction :: any) then
 						continue
-					end -- don't check itself
+					end
 
-					if v[bindingName].KeyCode == binding.KeyCode then
-						warn(`Conflicting keybinds found for {name} and {otherName}.`)
+					local bindingInstance: InputBinding = v:FindFirstChild(bindingName) :: InputBinding
+					if bindingInstance and bindingInstance:IsA("InputBinding") then
+						if bindingInstance.KeyCode == binding.KeyCode then
+							Utility.Warn(`Conflicting keybinds found for {name} and {otherName}.`, script.Name)
+						end
 					end
 				end
 			end)
 		end
 
-		context.keybinds[name] = action
+		context.keybinds[name] = newAction
+		action = newAction
 	end
 	return action
 end
@@ -111,4 +129,4 @@ function Keybind.EnableContext(context)
 	Keybind.CurrentContext = context
 end
 
-return Keybind -- :: KeybindImpl
+return Keybind :: KeybindImpl
