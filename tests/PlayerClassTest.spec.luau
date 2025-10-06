@@ -1,10 +1,11 @@
+local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 local PlayerClass = require(ServerScriptService.Server.Player.PlayerClass)
 
 return function()
 	describe("PlayerClass", function()
 		it("initialise correctement un joueur", function()
-			local fakePlayer = { Name = "TestPlayer" }
+			local fakePlayer: Player= Players.PlayerAdded:Wait()
 			local playerObj = PlayerClass.new(fakePlayer)
 
 			expect(playerObj.player).to.equal(fakePlayer)
@@ -13,7 +14,7 @@ return function()
 		end)
 
 		it("drain de stamina correct", function()
-			local fakePlayer = { Name = "Runner" }
+			local fakePlayer: Player= Players.PlayerAdded:Wait()
 			local playerObj = PlayerClass.new(fakePlayer)
 
 			-- simule un déplacement de 10 studs
@@ -25,7 +26,7 @@ return function()
 		end)
 
 		it("regen augmente la stamina jusqu'à 100", function()
-			local fakePlayer = { Name = "RegenTester" }
+			local fakePlayer: Player= Players.PlayerAdded:Wait()
 			local playerObj = PlayerClass.new(fakePlayer)
 			playerObj.stamina = 80
 
