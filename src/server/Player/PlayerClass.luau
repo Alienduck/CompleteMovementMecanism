@@ -22,6 +22,10 @@ local PLAYER_WALK_SPEED = 16
 local PLAYER_RUN_SPEED = 24
 
 -- Types
+export type BetterThread = thread & {
+	_stopped: boolean
+}
+
 export type PlayerClassType = {
 	-- Public
 	player: Player,
@@ -33,12 +37,16 @@ export type PlayerClassType = {
 
 	-- Private
 	_playerRunConn: RBXScriptConnection?,
-	_playerStaminaRegenThread: thread?,
+	_playerStaminaRegenThread: BetterThread?,
+	_allConnections: { RBXScriptConnection | thread},
 
 	-- Public Methods
 	new: (player: Player) -> PlayerClassType,
 	StartRun: (self: PlayerClassType) -> (),
 	StopRun: (self: PlayerClassType) -> (),
+	Disconnect: (self: PlayerClassType) -> (),
+	AddConnection: (self: PlayerClassType, conn: RBXScriptConnection | thread) -> (),
+	RemoveConnection: (self: PlayerClassType, conn: RBXScriptConnection | thread) -> (),
 
 	-- Private Methods
 }
@@ -63,7 +71,7 @@ function PlayerClass.new(player: Player): PlayerClassType?
 	local typedSelf: PlayerClassType = self
 
 	typedSelf.player = player
-	typedSelf.character = player.Character :: Model
+	typedSelf.character = player.Character or player.CharacterAdded:Wait() :: Model
 	if not typedSelf.character then
 		Utility.Warn("No Character found in " .. player.Name, script.Name)
 		return
@@ -85,12 +93,17 @@ function PlayerClass.new(player: Player): PlayerClassType?
 	-- Private
 	typedSelf._playerRunConn = nil
 	typedSelf._playerStaminaRegenThread = nil
+	typedSelf._allConnections = {}
 
 	return typedSelf
 end
 
 function PlayerClass.Init(self: PlayerClassType)
 	self.humanoid.WalkSpeed = PLAYER_WALK_SPEED
+end
+
+function PlayerClass.Disconnect(self: PlayerClassType)
+	
 end
 
 -- Démarre la consommation de stamina
@@ -109,12 +122,12 @@ function PlayerClass.StartRun(self: PlayerClassType)
 
 	-- stop éventuelle regen en cours
 	if self._playerStaminaRegenThread then
-		task.cancel(self._playerStaminaRegenThread)
-		self._playerStaminaRegenThread = nil
+		self:RemoveConnection(self._playerStaminaRegenThread)
 	end
 
+	-- Jamais censé arriver
 	if self._playerRunConn then
-		self._playerRunConn:Disconnect()
+		self:RemoveConnection(self._playerRunConn)
 	end
 
 	self._playerRunConn = RunService.Heartbeat:Connect(function()
@@ -137,23 +150,50 @@ function PlayerClass.StartRun(self: PlayerClassType)
 			self:StopRun()
 		end
 	end)
+	if self._playerRunConn then self:AddConnection(self._playerRunConn) end
 end
 
 function PlayerClass.StopRun(self: PlayerClassType)
 	if self._playerRunConn then
-		self._playerRunConn:Disconnect()
-		self._playerRunConn = nil
+		self:RemoveConnection(self._playerRunConn)
 	end
 	self.humanoid.WalkSpeed = PLAYER_WALK_SPEED
 
+	-- stop le thread précédent s’il existe
+	if self._playerStaminaRegenThread then
+		self._playerStaminaRegenThread._stopped = true
+		self._playerStaminaRegenThread = nil
+	end
+
 	-- lance un thread qui régénère la stamina progressivement
-	self._playerStaminaRegenThread = task.spawn(function()
-		while self.stamina < MAX_STAMINA do
+	local regenThread: BetterThread = {} :: BetterThread
+	self._playerStaminaRegenThread = regenThread
+	self:AddConnection(regenThread)
+
+	task.spawn(function()
+		while not regenThread._stopped and self.stamina < MAX_STAMINA do
 			self.stamina = math.clamp(self.stamina + STAMINA_REGEN_RATE, 0, MAX_STAMINA)
 			task.wait(REGEN_INTERVAL)
 		end
-		self._playerStaminaRegenThread = nil
+		self:RemoveConnection(regenThread)
 	end)
+end
+
+function PlayerClass.AddConnection(self: PlayerClassType, conn: RBXScriptConnection | thread)
+	table.insert(self._allConnections, conn)
+end
+
+function PlayerClass.RemoveConnection(self: PlayerClassType, conn: RBXScriptConnection | any)
+	local index = table.find(self._allConnections, conn)
+	if not index then return end
+
+	if typeof(conn) == "RBXScriptConnection" then
+		conn:Disconnect()
+	elseif typeof(conn) == "table" and conn._stopped ~= nil then
+		conn._stopped = true
+	end
+
+	table.remove(self._allConnections, index)
 end
 
 return PlayerClass
