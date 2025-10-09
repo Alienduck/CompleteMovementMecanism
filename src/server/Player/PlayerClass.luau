@@ -23,7 +23,7 @@ local PLAYER_RUN_SPEED = 24
 
 -- Types
 export type BetterThread = thread & {
-	_stopped: boolean
+	_stopped: boolean,
 }
 
 export type PlayerClassType = {
@@ -38,10 +38,11 @@ export type PlayerClassType = {
 	-- Private
 	_playerRunConn: RBXScriptConnection?,
 	_playerStaminaRegenThread: BetterThread?,
-	_allConnections: { RBXScriptConnection | thread},
+	_allConnections: { RBXScriptConnection | thread },
 
 	-- Public Methods
 	new: (player: Player) -> PlayerClassType,
+	Init: (self: PlayerClassType) -> (),
 	StartRun: (self: PlayerClassType) -> (),
 	StopRun: (self: PlayerClassType) -> (),
 	Disconnect: (self: PlayerClassType) -> (),
@@ -102,9 +103,7 @@ function PlayerClass.Init(self: PlayerClassType)
 	self.humanoid.WalkSpeed = PLAYER_WALK_SPEED
 end
 
-function PlayerClass.Disconnect(self: PlayerClassType)
-	
-end
+function PlayerClass.Disconnect(self: PlayerClassType) end
 
 -- Démarre la consommation de stamina
 function PlayerClass.StartRun(self: PlayerClassType)
@@ -150,7 +149,9 @@ function PlayerClass.StartRun(self: PlayerClassType)
 			self:StopRun()
 		end
 	end)
-	if self._playerRunConn then self:AddConnection(self._playerRunConn) end
+	if self._playerRunConn then
+		self:AddConnection(self._playerRunConn)
+	end
 end
 
 function PlayerClass.StopRun(self: PlayerClassType)
@@ -185,7 +186,9 @@ end
 
 function PlayerClass.RemoveConnection(self: PlayerClassType, conn: RBXScriptConnection | any)
 	local index = table.find(self._allConnections, conn)
-	if not index then return end
+	if not index then
+		return
+	end
 
 	if typeof(conn) == "RBXScriptConnection" then
 		conn:Disconnect()
